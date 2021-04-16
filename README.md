@@ -129,7 +129,7 @@ What this command does is:
 - `okta-blog` - This is telling Docker to run the `okta-blog` image you created earlier using that `docker build` command. The `-t` option you specified earlier when running `docker build` assigned a name tag to the image so you could easily reference it.
 - `npm start` - This is the actual command you're telling Docker to run to launch the blog sofware. Docker will start the container up and then run this command inside the container to launch the Jekyll blog.
 
-After that, all you have to do is open your browser and visit http://localhost:4000 to visit the site!
+After that, all you have to do is open your browser and visit `http://localhost:4000` to visit the site!
 
 ## Markdown Standards
 
@@ -151,7 +151,7 @@ The basic syntax for using the Okta CLI to set up an app is:
 {% include setup/cli.md type="spa" loginRedirectUri="http://localhost:8080/callback" %}
 ```
 
-Supported values for `type`: spa, web, native, service, and jhipster
+Supported values for `type`: spa, web, native, service, token, and jhipster
 
 Other parameters you can pass in:
 
@@ -162,7 +162,7 @@ Other parameters you can pass in:
 |`logoutRedirectUri`|Prints whatever you set, or defaults if not set|
 |`signup`|`false` reduces opening paragraph to one sentence|
 |`note`|Prints whatever you set. See .NET example below|
-|`adoc`|`true` required for posts written in `AsciiDoc`|
+|`install`|`false` removes 'Install the Okta CLI' sentence|
 
 See [How to Create an OIDC App on Okta](https://developer.okta.com/blog/setup) for this feature's documentation.
 
@@ -251,9 +251,10 @@ Finds the latest blog post and updates the post date to the date specified. **Da
 
 ```bash
 npm run dev
+npm start
 ```
 
-This command removes all posts from the local development environment except those dated within the last two weeks.
+This command removes all posts from the local development environment except those dated within the last two weeks. If you pass in a file name (or comma-separated list of filenames), it'll keep those too.
 
 ### Restoring Deleted Posts Before Pushing to GitHub
 
