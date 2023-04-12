@@ -5,21 +5,32 @@ author: matt-raible
 by: advocate
 communities: [java, javascript]
 description: "React is one of the most popular JavaScript frameworks, and Spring Boot is wildly popular in the Java ecosystem. This article shows you how to use them in the same app and secure it all with Okta."
-tags: [java, spring-boot, react, reactjs]
+tags: [java, spring-boot, react, auth0]
 tweets:
 - "React + Spring Boot makes for a nice development experience. Learn how to make them work together with OIDC authentication."
 - "Spring Boot with @java + React with @javascript == 💙. Learn how to build a @springboot + @reactjs CRUD app today!"
 image: blog/featured/okta-react-bottle-headphones.jpg
 type: conversion
+github: https://github.com/oktadev/okta-spring-boot-react-crud-example
+changelog:
+- 2022-12-09: Updated to use Spring Boot 3 and Spring Security 6. You can find the changes to this post in [okta-blog#1319](https://github.com/oktadev/okta-blog/pull/1319) and the example app's changes in [okta-spring-boot-react-crud-example#54](https://github.com/oktadev/okta-spring-boot-react-crud-example/pull/54).
+- 2022-11-04: Updated to use H2 version 2 and Spring Boot 2.7.5. You can find the changes to this post in [okta-blog#1301](https://github.com/oktadev/okta-blog/pull/1301) and the example app's changes in [okta-spring-boot-react-crud-example#50](https://github.com/oktadev/okta-spring-boot-react-crud-example/pull/50).
+- 2022-09-16: Updated to Spring Boot 2.7.3, React 18.0.2, and added a section for Auth0. You can find the changes to this article in [okta-blog#1271](https://github.com/oktadev/okta-blog/pull/1271). What's required to switch to Auth0 can be viewed in [the `auth0` branch](https://github.com/oktadev/okta-spring-boot-react-crud-example/compare/auth0).
 ---
 
 React was designed to make it painless to create interactive UIs. Its state management is efficient and only updates components when your data changes. Component logic is written in JavaScript, meaning you can keep state out of the DOM and create encapsulated components.
 
 Developers like CRUD (create, read, update, and delete) apps because they show a lot of the base functionality you need when creating an app. Once you have the basics of CRUD completed in an app, most of the client-server plumbing is finished, and you can move on to implementing the necessary business logic.
 
-Today, I'll show you how to create a basic CRUD app with Spring Boot in React. In this tutorial, I'll use the OAuth 2.0 Authorization Code flow and package the React app in the Spring Boot app for production. At the same time, I'll show you how to keep React's productive workflow for developing locally.
+Today, I'll show you how to create a basic CRUD app with Spring Boot and React. In this tutorial, I'll use the OAuth 2.0 Authorization Code flow and package the React app in the Spring Boot app for production. At the same time, I'll show you how to keep React's productive workflow for developing locally.
 
-You will need [Java 11](http://sdkman.io) and [Node 16](https://nodejs.org/) installed to complete this tutorial.
+This tutorial is also available [as a screencast](https://youtu.be/B5tcZoNyqGI).
+
+{% youtube B5tcZoNyqGI %}
+
+**Prerequisites:**
+
+You will need [Java 17](http://sdkman.io) and [Node 16](https://nodejs.org/) installed to complete this tutorial.
 
 {% include toc.md %}
 
@@ -31,6 +42,7 @@ Why am I telling you this? Because I thought it'd be fun to create a "JUG Tours"
 
 To begin, navigate to [start.spring.io](https://start.spring.io) and make the following selections:
 
+* **Project:** `Maven Project`
 * **Group:** `com.okta.developer`
 * **Artifact:** `jugtours`
 * **Dependencies**: `JPA`, `H2`, `Web`, `Lombok`
@@ -55,7 +67,7 @@ import lombok.NoArgsConstructor;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.util.Set;
 
 @Data
@@ -93,10 +105,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.ManyToMany;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToMany;
 import java.time.Instant;
 import java.util.Set;
 
@@ -127,13 +139,15 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
+@Table(name = "users")
 public class User {
 
     @Id
@@ -203,20 +217,7 @@ class Initializer implements CommandLineRunner {
 
 **TIP:** If your IDE has issues with `Event.builder()`, you need to turn on annotation processing and/or install the Lombok plugin. I had to uninstall/reinstall the Lombok plugin in IntelliJ IDEA to get things to work.
 
-If you start your app (using `./mvnw spring-boot:run`) ...
-
-... it will fail because Spring Boot 2.7.0 forces H2 v2.0. The H2 2.0 ecosystem doesn't seem like it's quite ready for prime time, so I recommend you downgrade to H2 version `1.4.200` in your `pom.xml`.
-
-```xml
-<dependency>
-  <groupId>com.h2database</groupId>
-  <artifactId>h2</artifactId>
-  <scope>runtime</scope>
-  <version>1.4.200</version>
-</dependency>
-```
-
-Then, `mvn spring-boot:run` should result in something like:
+If you start your app (using `./mvnw spring-boot:run`) it should result in something like:
 
 ```
 Group(id=1, name=Seattle JUG, address=null, city=null, stateOrProvince=null, country=null, postalCode=null, user=null, 
@@ -239,7 +240,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collection;
@@ -296,9 +297,8 @@ Add the following dependency to your `pom.xml` to fix compilation errors:
 
 ```xml
 <dependency>
-  <groupId>jakarta.validation</groupId>
-  <artifactId>jakarta.validation-api</artifactId>
-  <version>2.0.2</version>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-validation</artifactId>
 </dependency>
 ```
 
@@ -312,13 +312,6 @@ http :8080/api/group/6
 http PUT :8080/api/group/6 id=6 name='Utah JUG' address='On the slopes'
 http DELETE :8080/api/group/6
 ```
-
-<!--
-<build>
-  <defaultGoal>spring-boot:run</defaultGoal>
-  ...
-</build>
--->
 
 ## Create a React UI with Create React App
 
@@ -336,7 +329,6 @@ After the app creation process completes, navigate into the `app` directory and 
 cd app
 npm i bootstrap@5 react-cookie@4 react-router-dom@6 reactstrap@9
 ```
-<!-- npm install bootstrap@5.2.0-beta1 fixes autprefixer issue -->
 
 You'll use Bootstrap's CSS and Reactstrap's components to make the UI look better, especially on mobile phones. If you'd like to learn more about Reactstrap, see [reactstrap.github.io](https://reactstrap.github.io). It has extensive documentation on Reactstrap's various components and their use.
 
@@ -644,7 +636,7 @@ const GroupEdit = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    await fetch('/api/group' + (group.id ? '/' + group.id : ''), {
+    await fetch(`/api/group${group.id ? `/${group.id}` : ''}`, {
       method: (group.id) ? 'PUT' : 'POST',
       headers: {
         'Accept': 'application/json',
@@ -753,7 +745,7 @@ Are you sold? [Register for a forever-free developer account](https://developer.
 <dependency>
     <groupId>com.okta.spring</groupId>
     <artifactId>okta-spring-boot-starter</artifactId>
-    <version>2.1.5</version>
+    <version>2.1.6</version>
 </dependency>
 ```
 
@@ -784,6 +776,60 @@ This dependency is a thin wrapper around Spring Security's OAuth and encapsulate
    loginRedirectUri="http://localhost:8080/login/oauth2/code/okta"
    logoutRedirectUri="http://localhost:3000,http://localhost:8080" %}
 
+### Use Auth0 for OIDC
+
+If you'd rather use Auth0, that's possible too! First, you'll need to use the Spring Security dependencies as mentioned above. The Okta Spring Boot starter [currently doesn't work with Auth0](https://github.com/okta/okta-spring-boot/issues/358).
+
+Then, install the [Auth0 CLI](https://github.com/auth0/auth0-cli) and run `auth0 login` in a terminal.
+
+Next, run `auth0 apps create`, provide a memorable name, and select **Regular Web Application**. Specify `http://localhost:8080/login/oauth2/code/auth0` for the **Callback URLs** and `http://localhost:3000,http://localhost:8080` for the **Allowed Logout URLs**. 
+
+Modify your `src/main/resources/application.properties` to include your Auth0 issuer, client ID, and client secret. You will have to run `auth0 apps open` and select the app you created to copy your client secret. 
+
+```properties
+# make sure to include the trailing slash for the Auth0 issuer
+spring.security.oauth2.client.provider.auth0.issuer-uri=https://<your-auth0-domain>/
+spring.security.oauth2.client.registration.auth0.client-id=<your-client-id>
+spring.security.oauth2.client.registration.auth0.client-secret=<your-client-secret>
+spring.security.oauth2.client.registration.auth0.scope=openid,profile,email
+```
+
+Of course, you can also use your [Auth0 dashboard](https://manage.auth0.com) to configure your application. Just make sure to use the same URLs specified above. 
+
+After configuring Spring Security in the section below, update `UserController.java` to use `auth0` in its constructor:
+
+```java
+public UserController(ClientRegistrationRepository registrations) {
+    this.registration = registrations.findByRegistrationId("auth0");
+}
+```
+
+And update its `logout()` method to work with Auth0:
+
+```java
+@PostMapping("/api/logout")
+public ResponseEntity<?> logout(HttpServletRequest request) {
+    // send logout URL to client so they can initiate logout
+    StringBuilder logoutUrl = new StringBuilder();
+    String issuerUri = this.registration.getProviderDetails().getIssuerUri();
+    logoutUrl.append(issuerUri.endsWith("/") ? issuerUri + "v2/logout" : issuerUri + "/v2/logout");
+    logoutUrl.append("?client_id=").append(this.registration.getClientId());
+
+    Map<String, String> logoutDetails = new HashMap<>();
+    logoutDetails.put("logoutUrl", logoutUrl.toString());
+    request.getSession(false).invalidate();
+    return ResponseEntity.ok().body(logoutDetails);
+}
+```
+
+You'll also need to update `Home.js` in the React project to use different parameters for the logout redirect:
+
+```js
+window.location.href = `${response.logoutUrl}&returnTo=${window.location.origin}`;
+```
+
+You can see all the differences between Okta and Auth0 by [comparing their branches on GitHub](https://github.com/oktadev/okta-spring-boot-react-crud-example/compare/auth0).
+
 ## Configure Spring Security for React and user identity
 
 To make Spring Security React-friendly, create a `SecurityConfiguration.java` file in `src/main/java/.../jugtours/config`. Create the `config` directory and put this class in it.
@@ -791,74 +837,102 @@ To make Spring Security React-friendly, create a `SecurityConfiguration.java` fi
 ```java
 package com.okta.developer.jugtours.config;
 
+import com.okta.developer.jugtours.web.CookieCsrfFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.RequestCache;
 import org.springframework.security.web.savedrequest.SimpleSavedRequest;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-@EnableWebSecurity
+@Configuration
 public class SecurityConfiguration {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .authorizeHttpRequests((authz) -> authz
-                .antMatchers("/**/*.{js,html,css}").permitAll()
-                .antMatchers("/", "/api/user").permitAll()
+                .requestMatchers("/", "/index.html", "/static/**",
+                    "/*.ico", "/*.json", "/*.png", "/api/user").permitAll()
                 .anyRequest().authenticated()
             )
             .csrf((csrf) -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
             )
+            .addFilterAfter(new CookieCsrfFilter(), BasicAuthenticationFilter.class)
             .oauth2Login();
         return http.build();
     }
 
     @Bean
-    public RequestCache refererRequestCache() {
+    public RequestCache refererRequestCache() { 
         return new HttpSessionRequestCache() {
             @Override
             public void saveRequest(HttpServletRequest request, HttpServletResponse response) {
                 String referrer = request.getHeader("referer");
-                if (referrer != null) {
-                    request.getSession().setAttribute("SPRING_SECURITY_SAVED_REQUEST",
-                        new SimpleSavedRequest(referrer));
+                if (referrer == null) {
+                    referrer = request.getRequestURL().toString();
                 }
+                request.getSession().setAttribute("SPRING_SECURITY_SAVED_REQUEST",
+                    new SimpleSavedRequest(referrer));
+
             }
         };
     }
 }
 ```
 
-This class has a lot going on, so let me explain a few things. The `RequestCache` bean overrides the default request cache. It saves the referrer header (misspelled `referer` in real life), so Spring Security can redirect back to it after authentication. The referrer-based request cache comes in handy when you're developing React on `http://localhost:3000` and want to be redirected back there after logging in. 
+This class has a lot going on, so let me explain a few things. In previous versions of Spring Security, there was an `authorizeRequests()` lambda you could use to secure paths. It still exists, but it's deprecated in Spring Security 6. It's permissive by default, which means any paths you don't specify will be allowed. The recommended way, shown here with `authorizeHttpRequests()` denies by default. This means you have to specify the resources you want to allow Spring Security to serve up, as well as the ones that the React app has. 
+
+The `requestMatchers` lines defines what URLs are allowed for anonymous users. You will soon configure things so your React app is served up by your Spring Boot app, hence the reason for allowing "/", "/index.html", and web files. You might also notice an exposed `/api/user` path.
+
+The `RequestCache` bean overrides the default request cache. It saves the referrer header (misspelled `referer` in real life), so Spring Security can redirect back to it after authentication. The referrer-based request cache comes in handy when you're developing React on `http://localhost:3000` and want to be redirected back there after logging in.
+
+Configuring CSRF (cross-site request forgery) protection with `CookieCsrfTokenRepository.withHttpOnlyFalse()` means that the `XSRF-TOKEN` cookie won't be marked HTTP-only, so React can read it and send it back when it tries to manipulate data. The `CsrfTokenRequestAttributeHandler` is no longer the default, so you have to configure it as the request handler. You can read [this Stack Overflow answer](https://stackoverflow.com/a/74521360/65681) to learn more. Basically, since we're not sending the CSRF token to an HTML page, we don't have to worry about BREACH attacks. This means we can revert to the previous default from Spring Security 5.
+
+You'll need to create the `CookieCsrfFilter` class that's added because Spring Security 6 no longer sets the cookie for you. Create it in the `web` package.
 
 ```java
-@Bean
-public RequestCache refererRequestCache() {
-    return new HttpSessionRequestCache() {
-        @Override
-        public void saveRequest(HttpServletRequest request, HttpServletResponse response) {
-            String referrer = request.getHeader("referer");
-            if (referrer != null) {
-                request.getSession().setAttribute("SPRING_SECURITY_SAVED_REQUEST",
-                    new SimpleSavedRequest(referrer));
-            }
-        }
-    };
+package com.okta.developer.jugtours.web;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+/**
+ * Spring Security 6 doesn't set a XSRF-TOKEN cookie by default.
+ * This solution is
+ * <a href="https://github.com/spring-projects/spring-security/issues/12141#issuecomment-1321345077">
+ * recommended by Spring Security.</a>
+ */
+public class CookieCsrfFilter extends OncePerRequestFilter {
+
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                  FilterChain filterChain) throws ServletException, IOException {
+    CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+    response.setHeader(csrfToken.getHeaderName(), csrfToken.getToken());
+    filterChain.doFilter(request, response);
+  }
 }
 ```
 
-Configuring CSRF (cross-site request forgery) protection with `CookieCsrfTokenRepository.withHttpOnlyFalse()` means that the `XSRF-TOKEN` cookie won't be marked HTTP-only, so React can read it and send it back when it tries to manipulate data. 
-
-The `antMatchers` lines define what URLs are allowed for anonymous users. You will soon configure things so your React app is served up by your Spring Boot app, hence the reason for allowing web files and "/". You might also notice an exposed `/api/user` path. Create `src/main/java/.../jugtours/web/UserController.java` and populate it with the following code. This API will be used by React to 1) find out if a user is authenticated, and 2) perform global logout.
+Create `src/main/java/.../jugtours/web/UserController.java` and populate it with the following code. This API will be used by React to 1) find out if a user is authenticated, and 2) perform global logout.
 
 ```java
 package com.okta.developer.jugtours.web;
@@ -874,7 +948,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -945,7 +1019,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
 
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.Principal;
@@ -1048,7 +1122,7 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <CookiesProvider>
-      <App />
+      <App/>
     </CookiesProvider>
   </React.StrictMode>
 );
@@ -1091,7 +1165,8 @@ const Home = () => {
     if (port === ':3000') {
       port = ':8080';
     }
-    window.location.href = `//${window.location.hostname}${port}/private`;
+    // redirect to a protected URL to trigger authentication
+    window.location.href = `//${window.location.hostname}${port}/api/private`;
   }
 
   const logout = () => {
@@ -1225,8 +1300,8 @@ To build and package your React app with Maven, you can use the [frontend-maven-
 <properties>
     ...
     <frontend-maven-plugin.version>1.12.1</frontend-maven-plugin.version>
-    <node.version>v16.15.1</node.version>
-    <npm.version>v8.6.0</npm.version>
+    <node.version>v16.18.1</node.version>
+    <npm.version>8.19.2</npm.version>
 </properties>
 
 <profiles>
@@ -1331,6 +1406,48 @@ spring.profiles.active=@spring.profiles.active@
 After adding this, you should be able to run `./mvnw spring-boot:run -Pprod` and see your app running on `http://localhost:8080`. 
 
 {% img blog/spring-boot-react/localhost-8080.png alt:"App Running with Maven" width:"800" %}{: .center-image }
+
+Everything will work just fine if you start at the root, since React will handle routing. However, if you refresh the page when you're at `http://localhost:8080/groups`, you'll get a 404 error since Spring Boot doesn't have a route for `/groups`. To fix this, add a `SpaWebFilter` that conditionally forwards to the React app.
+
+```java
+package com.okta.developer.jugtours.web;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.security.Principal;
+
+public class SpaWebFilter extends OncePerRequestFilter {
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+        String path = request.getRequestURI();
+        Authentication user = SecurityContextHolder.getContext().getAuthentication();
+        if (user != null && !path.startsWith("/api") && !path.contains(".") && path.matches("/(.*)")) {
+            request.getRequestDispatcher("/").forward(request, response);
+            return;
+        }
+
+        filterChain.doFilter(request, response);
+    }
+}
+```
+
+And, add it to `SecurityConfiguration.java`:
+
+```java
+.addFilterAfter(new SpaWebFilter(), BasicAuthenticationFilter.class)
+```
+
+Now, if you restart and reload the page, everything will work as expected. 🤗
 
 ## Learn more about Spring Boot and React
 
